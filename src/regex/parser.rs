@@ -131,13 +131,38 @@ impl<'a> Parser<'a> {
                         max: Some(1),
                     }));
                 }
+                Some('{') => {
+                    chars.next();
+                    let lower = parse_number(chars)?.unwrap_or(0);
+                    match chars.peek().copied().ok_or(ParseError::UnexpectedEos)? {
+                        ',' => {
+                            chars.next();
+                            let upper = parse_number(chars)?;
+                            expect_char(chars, '}')?;
+                            terms.push(self.arena.alloc(Regex::Repeat {
+                                expr: item.ok_or(ParseError::ShouldEscape)?,
+                                min: lower,
+                                max: upper,
+                            }));
+                        }
+                        '}' => {
+                            chars.next();
+                            terms.push(self.arena.alloc(Regex::Repeat {
+                                expr: item.ok_or(ParseError::ShouldEscape)?,
+                                min: lower,
+                                max: Some(lower),
+                            }));
+                        }
+                        _ => return Err(ParseError::ShouldEscape),
+                    }
+                }
                 Some(_) => {
                     terms.push(item.ok_or(ParseError::ShouldEscape)?);
                 }
                 None => {
                     terms.push(item.ok_or(ParseError::ShouldEscape)?);
                     break;
-                } // TODO: NUMSPEC に対応
+                }
             }
         }
         Ok(Regex::sequence_from_iter(&self.arena, terms))
@@ -180,7 +205,7 @@ impl<'a> Parser<'a> {
     ) -> Result<Option<&'a mut Regex<'a>>, ParseError> {
         match chars.peek().copied() {
             None => Ok(None),
-            Some('+' | '?' | '*' | '(' | ')' | '[' | ']' | '|') => Ok(None),
+            Some('+' | '?' | '*' | '(' | ')' | '[' | ']' | '{' | '}' | '|') => Ok(None),
             Some('.') => {
                 chars.next();
                 Ok(Some(self.arena.alloc(Regex::Literal(Char::Any))))
@@ -198,6 +223,35 @@ impl<'a> Parser<'a> {
                 Ok(Some(self.arena.alloc(Regex::Literal(Char::Just(c)))))
             }
         }
+    }
+}
+
+/// Parses number.
+fn parse_number(chars: &mut Peekable<Chars>) -> Result<Option<usize>, ParseError> {
+    let mut number_str = String::with_capacity(16);
+    loop {
+        match chars.peek().copied() {
+            Some(n @ '0'..='9') => {
+                chars.next();
+                number_str.push(n);
+            }
+            Some(_c @ (',' | '}')) => break,
+            Some(c) => {
+                return Err(ParseError::UnexpectedChar {
+                    expected: '0',
+                    actual: c,
+                })
+            }
+            None => return Err(ParseError::UnexpectedEos),
+        }
+    }
+
+    if number_str == "" {
+        Ok(None)
+    } else {
+        Ok(Some(
+            number_str.parse().map_err(|_| ParseError::ShouldEscape)?,
+        ))
     }
 }
 

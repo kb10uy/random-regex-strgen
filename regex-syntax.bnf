@@ -6,7 +6,7 @@ EXPRLIST    ::= one of
 
 EXPRTAIL    ::= one of
   | EPSILON
-  | '|' EXPRSEQ EXPRTAIL 
+  | '|' EXPRSEQ EXPRTAIL
 
 EXPRSEQ     ::= one of
   | (TERM | QUALIFIED) EXPRSEQTAIL
