@@ -1,0 +1,33 @@
+CHAR        ::= '\d' | '\w' | any char expect +*?()[]{}\|
+NUM         ::= '0' to '9'
+
+EXPRLIST    ::= one of
+  | EXPRSEQ EXPRTAIL
+
+EXPRTAIL    ::= one of
+  | EPSILON
+  | '|' EXPRSEQ EXPRTAIL 
+
+EXPRSEQ     ::= one of
+  | (TERM | QUALIFIED) EXPRSEQTAIL
+
+EXPRSEQTAIL ::= one of
+  | EPSILON
+  | (TERM | QUALIFIED) EXPRSEQTAIL
+
+TERM        ::= one of
+  | CHAR
+  | '(' EXPRLIST ')'
+  | '[' CHAR+ ']'
+
+QUALIFILED ::= one of
+  | TERM '+'
+  | TERM '*'
+  | TERM '?'
+  | TERM NUMSPEC
+
+NUMSPEC    ::= one of
+  | '{' NUM '}'
+  | '{' NUM ',' '}'
+  | '{' ',' NUM '}'
+  | '{' NUM ',' NUM '}'

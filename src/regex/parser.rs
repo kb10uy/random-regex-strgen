@@ -17,6 +17,14 @@ pub enum ParseError {
     /// The parser instance is already used.
     AlreadyInUse,
 
+    UnexpectedChar {
+        expected: char,
+        actual: char,
+    },
+
+    /// Unexpected control char detected.
+    ShouldEscape,
+
     /// Unexpected EOS detected.
     UnexpectedEos,
 
@@ -28,6 +36,10 @@ impl Display for ParseError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             ParseError::AlreadyInUse => write!(f, "Parser already in use"),
+            ParseError::UnexpectedChar { expected, actual } => {
+                write!(f, "Unexpected char '{}', expected '{}'", actual, expected)
+            }
+            ParseError::ShouldEscape => write!(f, "Unexpected control char detected"),
             ParseError::UnexpectedEos => write!(f, "Unexpected EOS detected"),
             ParseError::OtherError => write!(f, "Other error happenned"),
         }
@@ -36,22 +48,10 @@ impl Display for ParseError {
 
 impl Error for ParseError {}
 
-/// Represents the start of some groups.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum ParseState {
-    /// `[`
-    StartAnyChar,
-
-    /// `(`
-    StartGroup,
-}
-
 /// Regex parser.
 pub struct Parser<'a> {
     arena: Arena<Regex<'a>>,
     in_use: bool,
-    parse_stack: Vec<ParseState>,
-    ast_stack: Vec<&'a mut Regex<'a>>,
 }
 
 impl<'a> Parser<'a> {
@@ -61,8 +61,6 @@ impl<'a> Parser<'a> {
         Parser {
             arena,
             in_use: false,
-            parse_stack: vec![],
-            ast_stack: vec![],
         }
     }
 
@@ -72,8 +70,6 @@ impl<'a> Parser<'a> {
         Parser {
             arena,
             in_use: false,
-            parse_stack: vec![],
-            ast_stack: vec![],
         }
     }
 
@@ -83,64 +79,132 @@ impl<'a> Parser<'a> {
             return Err(ParseError::AlreadyInUse);
         }
 
+        self.in_use = true;
         let mut chars = re.chars().peekable();
-        let mut escaping = false;
-        while let Some(c) = chars.next() {
-            match c {
-                '(' if !escaping => {
-                    self.parse_stack.push(ParseState::StartGroup);
+        self.parse_expr_list(&mut chars)
+    }
+
+    /// Parses `EXPRLIST`.
+    fn parse_expr_list(
+        &'a self,
+        chars: &mut Peekable<Chars>,
+    ) -> Result<&'a mut Regex<'a>, ParseError> {
+        let mut seqs = vec![];
+        loop {
+            let item = self.parse_expr_seq(chars)?;
+            seqs.push(item);
+
+            let peeked = chars.peek();
+            if peeked != Some(&'|') {
+                break;
+            }
+            chars.next();
+        }
+        Ok(Regex::anyof_from_iter(&self.arena, seqs))
+    }
+
+    /// Parses `EXPRSEQ`.
+    fn parse_expr_seq(
+        &'a self,
+        chars: &mut Peekable<Chars>,
+    ) -> Result<&'a mut Regex<'a>, ParseError> {
+        let mut terms = vec![];
+        loop {
+            let item = self.parse_term(chars)?;
+            let peeked = chars.peek();
+            match peeked {
+                Some('+') => {
+                    chars.next();
+                    terms.push(self.arena.alloc(Regex::Repeat {
+                        expr: item,
+                        min: 1,
+                        max: None,
+                    }));
                 }
-                ')' if !escaping => {}
-                '[' if !escaping => {
-                    self.parse_stack.push(ParseState::StartAnyChar);
+                Some('*') => {
+                    chars.next();
+                    terms.push(self.arena.alloc(Regex::Repeat {
+                        expr: item,
+                        min: 0,
+                        max: None,
+                    }));
                 }
-                ']' if !escaping => {}
-                '\\' if !escaping => {
-                    escaping = true;
+                Some('?') => {
+                    chars.next();
+                    terms.push(self.arena.alloc(Regex::Repeat {
+                        expr: item,
+                        min: 0,
+                        max: Some(1),
+                    }));
                 }
-                _ => {
-                    escaping = false;
+                Some(_) => {
+                    terms.push(item);
                 }
+                None => break,
+                // TODO: NUMSPEC に対応
             }
         }
-
-        todo!();
+        Ok(Regex::sequence_from_iter(&self.arena, terms))
     }
 
     /// Parses `EXPR`.
-    fn parse_expr(
-        &'a mut self,
-        chars: &mut Peekable<Chars>,
-    ) -> Result<&'a mut Regex<'a>, ParseError> {
-        match chars.peek() {
-            None => Ok(self.arena.alloc(Regex::Tail)),
-            Some('(') => {
+    fn parse_term(&'a self, chars: &mut Peekable<Chars>) -> Result<&'a mut Regex<'a>, ParseError> {
+        match chars.peek().ok_or(ParseError::UnexpectedEos)? {
+            '(' => {
                 chars.next();
-                todo!();
+                let expr_list = self.parse_expr_list(chars)?;
+                expect_char(chars, ')')?;
+                Ok(expr_list)
             }
-            Some('[') => {
+            '[' => {
                 chars.next();
-                todo!();
+                let mut charlist = vec![];
+                loop {
+                    match self.parse_char(chars)? {
+                        Some(c) => charlist.push(c),
+                        None => {
+                            expect_char(chars, ']')?;
+                            break;
+                        }
+                    }
+                }
+                Ok(Regex::anyof_from_iter(&self.arena, charlist))
             }
-            Some(c) => {
-                todo!();
-            }
-            _ => Err(ParseError::OtherError),
+            _ => self.parse_char(chars)?.ok_or(ParseError::ShouldEscape),
         }
     }
 
     /// Parses `CHAR`.
     fn parse_char(
-        &'a mut self,
+        &'a self,
         chars: &mut Peekable<Chars>,
-    ) -> Result<&'a mut Regex<'a>, ParseError> {
-        match chars.next().ok_or(ParseError::UnexpectedEos)? {
-            '\\' => match chars.next().ok_or(ParseError::UnexpectedEos)? {
-                'd' => Ok(self.arena.alloc(Regex::Literal(Char::Number))),
-                'w' => Ok(self.arena.alloc(Regex::Literal(Char::Alphabet))),
-                c => Ok(self.arena.alloc(Regex::Literal(Char::Just(c)))),
-            },
-            c => Ok(self.arena.alloc(Regex::Literal(Char::Just(c)))),
+    ) -> Result<Option<&'a mut Regex<'a>>, ParseError> {
+        match chars.peek() {
+            None => Ok(None),
+            Some('+' | '?' | '*' | '(' | ')' | '[' | ']' | '|') => Ok(None),
+            Some('\\') => {
+                chars.next();
+                match chars.next().ok_or(ParseError::UnexpectedEos)? {
+                    'd' => Ok(Some(self.arena.alloc(Regex::Literal(Char::Number)))),
+                    'w' => Ok(Some(self.arena.alloc(Regex::Literal(Char::Alphabet)))),
+                    c => Ok(Some(self.arena.alloc(Regex::Literal(Char::Just(c))))),
+                }
+            }
+            Some(c) => Ok(Some(self.arena.alloc(Regex::Literal(Char::Just(*c))))),
         }
+    }
+}
+
+/// Expects specific char on stream.
+fn expect_char(chars: &mut Peekable<Chars>, c: char) -> Result<(), ParseError> {
+    let peeked = *chars.peek().ok_or(ParseError::UnexpectedEos)?;
+    if peeked == c {
+        chars.next();
+        Ok(())
+    } else {
+        Err(ParseError::UnexpectedChar {
+            expected: c,
+            actual: peeked,
+        })
     }
 }

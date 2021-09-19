@@ -75,7 +75,7 @@ impl<'a> Regex<'a> {
     pub fn sequence_from_iter(
         arena: &'a Arena<Regex<'a>>,
         iter: impl IntoIterator<Item = &'a mut Regex<'a>>,
-    ) -> &'a Regex<'a> {
+    ) -> &'a mut Regex<'a> {
         let mut iter: Vec<_> = iter.into_iter().collect();
         iter.reverse();
         match iter.len() {
@@ -95,7 +95,7 @@ impl<'a> Regex<'a> {
     pub fn anyof_from_iter(
         arena: &'a Arena<Regex<'a>>,
         iter: impl IntoIterator<Item = &'a mut Regex<'a>>,
-    ) -> &'a Regex<'a> {
+    ) -> &'a mut Regex<'a> {
         let mut iter: Vec<_> = iter.into_iter().collect();
         iter.reverse();
         match iter.len() {
