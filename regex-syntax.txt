@@ -1,0 +1,25 @@
+CHAR      ::= '\d' | '\w' | any char
+NUM       ::= '0' to '9'
+
+NUMSPEC   ::= one of
+  | '{' NUM '}'
+  | '{' NUM ',' '}'
+  | '{' ',' NUM '}'
+  | '{' NUM ',' NUM '}'
+
+EXPR      ::= one of
+  | CHAR EXPRTAIL
+  | '(' EXPR { '|' EXPR }* ')' EXPRTAIL
+  | '[' EXPR ']' EXPRTAIL
+EXPRTAIL  ::= one of
+  | EPSILON
+  | CHAR EXPRTAIL
+  | '+' EXPRTAIL
+  | '*' EXPRTAIL
+  | '?' EXPRTAIL
+  | NUMSPEC EXPRTAIL
+
+CHARS     ::= CHAR CHARSTAIL
+CHARSTAIL ::= one of
+  | EPSILON
+  | CHAR CHARSTAIL
