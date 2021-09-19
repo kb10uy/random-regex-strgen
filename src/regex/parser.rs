@@ -5,6 +5,7 @@ use std::{
     error::Error,
     fmt::{Display, Formatter, Result as FmtResult},
     iter::Peekable,
+    mem::size_of,
     str::Chars,
     vec,
 };
@@ -62,14 +63,15 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses a regex.
-    pub fn parse(&'a mut self, re: &str) -> Result<&'a mut Regex<'a>, ParseError> {
+    pub fn parse(&'a mut self, re: &str) -> Result<(&'a mut Regex<'a>, usize), ParseError> {
         if self.in_use {
             return Err(ParseError::AlreadyInUse);
         }
 
         self.in_use = true;
         let mut chars = re.chars().peekable();
-        self.parse_expr_list(&mut chars)
+        let result = self.parse_expr_list(&mut chars)?;
+        Ok((result, self.arena.len() * size_of::<Regex>()))
     }
 
     /// Parses `EXPRLIST`.
@@ -135,8 +137,7 @@ impl<'a> Parser<'a> {
                 None => {
                     terms.push(item.ok_or(ParseError::ShouldEscape)?);
                     break;
-                }
-                // TODO: NUMSPEC に対応
+                } // TODO: NUMSPEC に対応
             }
         }
         Ok(Regex::sequence_from_iter(&self.arena, terms))

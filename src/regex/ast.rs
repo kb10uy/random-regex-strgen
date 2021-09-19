@@ -23,7 +23,6 @@ pub enum Char {
 }
 
 impl Char {
-    /*
     /// Returns the weight of this `Char` instance for random generation.
     pub fn random_weight(&self) -> usize {
         match self {
@@ -33,13 +32,14 @@ impl Char {
             Char::Any => 36,
         }
     }
-    */
 }
 
 impl Display for Char {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
-            Char::Just(c @ ('.' | '+' | '?' | '*' | '(' | ')' | '[' | ']' | '{' | '}' | '|' | '\\')) => {
+            Char::Just(
+                c @ ('.' | '+' | '?' | '*' | '(' | ')' | '[' | ']' | '{' | '}' | '|' | '\\'),
+            ) => {
                 write!(f, "\\{}", c)
             }
             Char::Just(c) => write!(f, "{}", c),
@@ -80,6 +80,21 @@ pub enum Regex<'a> {
 }
 
 impl<'a> Regex<'a> {
+    /// Returns the weight of this `Char` instance for random generation.
+    pub fn random_weight(&self) -> usize {
+        match self {
+            Regex::Tail => 0,
+            Regex::Literal(c) => c.random_weight(),
+            Regex::Sequence { .. } => 1,
+            Regex::AnyOf { .. } => self
+                .iter()
+                .expect("Should have items")
+                .map(|r| r.random_weight())
+                .sum(),
+            Regex::Repeat { expr, .. } => expr.random_weight(),
+        }
+    }
+
     /// Constructs `Regex::Sequence` list from iterator.
     pub fn sequence_from_iter(
         arena: &'a Arena<Regex<'a>>,
@@ -224,9 +239,9 @@ impl<'a> Display for Regex<'a> {
                         }
                     }
                     Regex::Repeat { .. } => {
-                            write!(f, "(")?;
-                            expr.fmt(f)?;
-                            write!(f, ")")?;
+                        write!(f, "(")?;
+                        expr.fmt(f)?;
+                        write!(f, ")")?;
                     }
                 }
                 match (min, max) {
