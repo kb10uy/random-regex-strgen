@@ -224,7 +224,9 @@ impl<'a> Display for Regex<'a> {
                         }
                     }
                     Regex::Repeat { .. } => {
-                        expr.fmt(f)?;
+                            write!(f, "(")?;
+                            expr.fmt(f)?;
+                            write!(f, ")")?;
                     }
                 }
                 match (min, max) {
