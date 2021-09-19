@@ -1,5 +1,4 @@
 /// Contains AST types for regex.
-
 use std::{
     fmt::{Display, Formatter, Result as FmtResult},
     iter::FusedIterator,
@@ -18,25 +17,35 @@ pub enum Char {
 
     /// numbers `[0-9]`
     Number,
+
+    /// any character expect space `.`
+    Any,
 }
 
 impl Char {
+    /*
     /// Returns the weight of this `Char` instance for random generation.
     pub fn random_weight(&self) -> usize {
         match self {
-            Char::Just(c) => 1,
+            Char::Just(_) => 1,
             Char::Alphabet => 26,
             Char::Number => 10,
+            Char::Any => 36,
         }
     }
+    */
 }
 
 impl Display for Char {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
+            Char::Just(c @ ('.' | '+' | '?' | '*' | '(' | ')' | '[' | ']' | '{' | '}' | '|' | '\\')) => {
+                write!(f, "\\{}", c)
+            }
             Char::Just(c) => write!(f, "{}", c),
             Char::Alphabet => write!(f, "\\w"),
             Char::Number => write!(f, "\\d"),
+            Char::Any => write!(f, "."),
         }
     }
 }

@@ -1,4 +1,4 @@
-CHAR        ::= '\d' | '\w' | any char expect +*?()[]{}\|
+CHAR        ::= '\d' | '\w' | any char expect +*?()[]{}\|.
 NUM         ::= '0' to '9'
 
 EXPRLIST    ::= one of

@@ -27,9 +27,6 @@ pub enum ParseError {
 
     /// Unexpected EOS detected.
     UnexpectedEos,
-
-    /// Unknown other error.
-    OtherError,
 }
 
 impl Display for ParseError {
@@ -41,7 +38,7 @@ impl Display for ParseError {
             }
             ParseError::ShouldEscape => write!(f, "Unexpected control char detected"),
             ParseError::UnexpectedEos => write!(f, "Unexpected EOS detected"),
-            ParseError::OtherError => write!(f, "Other error happenned"),
+            // _ => write!(f, "Other error happenned"),
         }
     }
 }
@@ -102,12 +99,16 @@ impl<'a> Parser<'a> {
         let mut terms = vec![];
         loop {
             let item = self.parse_term(chars)?;
+            if item.is_none() {
+                break;
+            }
+
             let peeked = chars.peek();
             match peeked {
                 Some('+') => {
                     chars.next();
                     terms.push(self.arena.alloc(Regex::Repeat {
-                        expr: item,
+                        expr: item.ok_or(ParseError::ShouldEscape)?,
                         min: 1,
                         max: None,
                     }));
@@ -115,7 +116,7 @@ impl<'a> Parser<'a> {
                 Some('*') => {
                     chars.next();
                     terms.push(self.arena.alloc(Regex::Repeat {
-                        expr: item,
+                        expr: item.ok_or(ParseError::ShouldEscape)?,
                         min: 0,
                         max: None,
                     }));
@@ -123,31 +124,37 @@ impl<'a> Parser<'a> {
                 Some('?') => {
                     chars.next();
                     terms.push(self.arena.alloc(Regex::Repeat {
-                        expr: item,
+                        expr: item.ok_or(ParseError::ShouldEscape)?,
                         min: 0,
                         max: Some(1),
                     }));
                 }
                 Some(_) => {
-                    terms.push(item);
+                    terms.push(item.ok_or(ParseError::ShouldEscape)?);
                 }
-                None => break,
+                None => {
+                    terms.push(item.ok_or(ParseError::ShouldEscape)?);
+                    break;
+                }
                 // TODO: NUMSPEC に対応
             }
         }
         Ok(Regex::sequence_from_iter(&self.arena, terms))
     }
 
-    /// Parses `EXPR`.
-    fn parse_term(&'a self, chars: &mut Peekable<Chars>) -> Result<&'a mut Regex<'a>, ParseError> {
-        match chars.peek().ok_or(ParseError::UnexpectedEos)? {
-            '(' => {
+    /// Parses `TERM`.
+    fn parse_term(
+        &'a self,
+        chars: &mut Peekable<Chars>,
+    ) -> Result<Option<&'a mut Regex<'a>>, ParseError> {
+        match chars.peek() {
+            Some('(') => {
                 chars.next();
                 let expr_list = self.parse_expr_list(chars)?;
                 expect_char(chars, ')')?;
-                Ok(expr_list)
+                Ok(Some(expr_list))
             }
-            '[' => {
+            Some('[') => {
                 chars.next();
                 let mut charlist = vec![];
                 loop {
@@ -159,9 +166,9 @@ impl<'a> Parser<'a> {
                         }
                     }
                 }
-                Ok(Regex::anyof_from_iter(&self.arena, charlist))
+                Ok(Some(Regex::anyof_from_iter(&self.arena, charlist)))
             }
-            _ => self.parse_char(chars)?.ok_or(ParseError::ShouldEscape),
+            _ => self.parse_char(chars),
         }
     }
 
@@ -170,9 +177,13 @@ impl<'a> Parser<'a> {
         &'a self,
         chars: &mut Peekable<Chars>,
     ) -> Result<Option<&'a mut Regex<'a>>, ParseError> {
-        match chars.peek() {
+        match chars.peek().copied() {
             None => Ok(None),
             Some('+' | '?' | '*' | '(' | ')' | '[' | ']' | '|') => Ok(None),
+            Some('.') => {
+                chars.next();
+                Ok(Some(self.arena.alloc(Regex::Literal(Char::Any))))
+            }
             Some('\\') => {
                 chars.next();
                 match chars.next().ok_or(ParseError::UnexpectedEos)? {
@@ -181,7 +192,10 @@ impl<'a> Parser<'a> {
                     c => Ok(Some(self.arena.alloc(Regex::Literal(Char::Just(c))))),
                 }
             }
-            Some(c) => Ok(Some(self.arena.alloc(Regex::Literal(Char::Just(*c))))),
+            Some(c) => {
+                chars.next();
+                Ok(Some(self.arena.alloc(Regex::Literal(Char::Just(c)))))
+            }
         }
     }
 }

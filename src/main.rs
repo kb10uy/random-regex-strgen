@@ -2,12 +2,22 @@ mod regex;
 
 use crate::regex::{ParseError, Parser};
 
-fn main() -> Result<(), ParseError> {
-    let mut parser = Parser::new();
-    let regex = parser.parse(r#"\w{5}you(0\d)+"#)?;
+use std::env::args;
 
-    // Expected: Equivalent to \w{5}you(0\d){2,}
-    println!("{}", regex);
+fn main() -> Result<(), ParseError> {
+    let args: Vec<String> = args().skip(1).collect();
+
+    for regex_str in args {
+        println!("Input  : {}", regex_str);
+        
+        let mut parser = Parser::new();
+        match parser.parse(&regex_str) {
+            Ok(regex) => println!("Result : {}", regex),
+            Err(err) => println!("Error  : {}", err),
+        }
+
+        println!();
+    }
 
     Ok(())
 }
