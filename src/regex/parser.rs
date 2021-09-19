@@ -64,15 +64,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Creates new parser instance with arena capacity.
-    pub fn with_capacity(cap: usize) -> Parser<'a> {
-        let arena = Arena::with_capacity(cap);
-        Parser {
-            arena,
-            in_use: false,
-        }
-    }
-
     /// Parses a regex.
     pub fn parse(&'a mut self, re: &str) -> Result<&'a mut Regex<'a>, ParseError> {
         if self.in_use {
